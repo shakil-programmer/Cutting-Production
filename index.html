@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="logo-1.png" />
     <title>Production Dashboard of Cutting Section - DPQSL</title>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -104,11 +103,10 @@
         .header-title-box .logo-mark {
             width: clamp(30px, 2.4vw, 42px); height: clamp(30px, 2.4vw, 42px);
             border-radius: 8px;
-            /* background: linear-gradient(135deg, var(--accent-teal), var(--steel-600)); */
-            background:#fff;
+            background: linear-gradient(135deg, var(--accent-teal), var(--steel-600));
             display: flex; align-items: center; justify-content: center;
             color: #fff; font-size: clamp(13px, 1.2vw, 18px); flex-shrink: 0;
-          /*   box-shadow: 0 2px 8px rgba(6,182,164,0.4); */
+            box-shadow: 0 2px 8px rgba(6,182,164,0.4);
         }
         .header-title-box h1 {
             font-family: 'Manrope', 'Inter', sans-serif;
@@ -400,8 +398,7 @@
     <!-- Top Navigation Filter Headers -->
     <nav class="top-nav">
         <div class="header-title-box">
-            <!-- <div class="logo-mark"><i class="fa-solid fa-scissors"></i></div> -->
-            <div class="logo-mark"><img src="logo-1.png" alt="" style="height: 40px; width: 40px;"></div>
+            <div class="logo-mark"><i class="fa-solid fa-scissors"></i></div>
             <div>
                 <h1>PRODUCTION DASHBOARD OF CUTTING SECTION-<span>DPQSL</span></h1>
                 <div class="sync-line"><span class="sync-dot"></span><span id="sync-label">Syncing...</span></div>
@@ -501,7 +498,7 @@
                     <i class="fa-solid fa-boxes-stacked kpi-icon"></i>
                 </div>
                 <div class="kpi-value" id="kpi-stock">0</div>
-                <div class="kpi-subtext">Cut-Panel Stock in cutting</div>
+                <div class="kpi-subtext">Fabric balance in cutting store</div>
                 <div class="kpi-trend flat" id="trend-stock"><i class="fa-solid fa-minus"></i> vs prev day</div>
             </div>
         </section>
@@ -575,6 +572,7 @@
         let barChartInst, lineChartInst, donutOverallInst;
         let yearDonutInstances = {}; // { year: chartInstance }
         let yearFilterInitialized = false; // only auto-pick current year on first load
+        let dateFilterInitialized = false; // only auto-pick the sheet's latest date on first load
         const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
 
         function formatToMillions(num) {
@@ -595,12 +593,26 @@
         function setDefaultYesterdayDate() {
             const today = new Date();
             today.setDate(today.getDate() - 1);
-            const yyyy = today.getFullYear();
-            let mm = today.getMonth() + 1;
-            let dd = today.getDate();
+            setDateInputValue(today);
+        }
+
+        function setDateInputValue(dateObj) {
+            const yyyy = dateObj.getFullYear();
+            let mm = dateObj.getMonth() + 1;
+            let dd = dateObj.getDate();
             if (dd < 10) dd = '0' + dd;
             if (mm < 10) mm = '0' + mm;
             document.getElementById('filter-date').value = `${yyyy}-${mm}-${dd}`;
+        }
+
+        // Finds the most recent DATE value present anywhere in the sheet
+        function findLatestDate(rows) {
+            let latest = null;
+            rows.forEach(d => {
+                const dt = parseSheetDate(d.DATE);
+                if (dt && (!latest || dt > latest)) latest = dt;
+            });
+            return latest;
         }
 
         function manualRefresh() {
@@ -636,7 +648,17 @@
                     return item;
                 });
 
-                populateYearFilter();
+                const latestDate = findLatestDate(rawData);
+
+                populateYearFilter(latestDate);
+
+                if (!dateFilterInitialized) {
+                    if (latestDate) {
+                        setDateInputValue(latestDate);
+                    }
+                    dateFilterInitialized = true;
+                }
+
                 processFiltering();
 
                 const now = new Date();
@@ -647,7 +669,7 @@
             }
         }
 
-        function populateYearFilter() {
+        function populateYearFilter(latestDate) {
             const sel = document.getElementById('filter-year');
             const currentVal = sel.value || "All";
             const years = [...new Set(rawData.map(d => String(d.YEAR)).filter(y => y && y !== 'undefined'))].sort();
@@ -655,10 +677,14 @@
                 years.map(y => `<option value="${y}">${y}</option>`).join('');
 
             if (!yearFilterInitialized) {
-                // First load: default to the current calendar year if it exists in the sheet,
-                // otherwise fall back to the most recent year available.
+                // First load: prefer the year of the sheet's latest entry (keeps charts and
+                // KPI date in sync), falling back to the current calendar year, then the
+                // most recent year available.
+                const latestYear = latestDate ? String(latestDate.getFullYear()) : null;
                 const currentYear = String(new Date().getFullYear());
-                if (years.includes(currentYear)) {
+                if (latestYear && years.includes(latestYear)) {
+                    sel.value = latestYear;
+                } else if (years.includes(currentYear)) {
                     sel.value = currentYear;
                 } else if (years.length) {
                     sel.value = years[years.length - 1];
